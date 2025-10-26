@@ -142,6 +142,16 @@ def scalar_mul_montgomery(P, k, p):
         kk >>= 1
     return R
 
+def point_sub_montgomery(P, Q, p):
+    if P is None:
+        # -Q
+        (xQ, yQ) = Q
+        return (xQ, negate_fp2(yQ, p))
+    if Q is None:
+        return P
+    (xQ, yQ) = Q
+    Qneg = (xQ, negate_fp2(yQ, p))
+    return point_add_montgomery(P, Qneg, p)
 
 # Quick self-check for tiny p
 if __name__ == "__main__":
