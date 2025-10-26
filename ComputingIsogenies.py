@@ -250,10 +250,6 @@ if __name__ == "__main__":
     print("phi2_x(xQ2) =", img_xQ2)
     print("phi2_x(xR2) =", img_xR2)
 
-    # Recover A from the triple (xP2, xQ2, xR2) using cfpk
-    A_from_pk2 = cfpk(img_xP2,img_xQ2, img_xR2, p)
-    print("A from cfpk(P2,Q2,R2) =", A_from_pk2)
-
     # -------------------------
     # 3^e3 torsion side
     # -------------------------
@@ -278,9 +274,5 @@ if __name__ == "__main__":
     img_xR3 = phi3_x(xR3)
     print("phi3_x(xQ3) =", img_xQ3)
     print("phi3_x(xR3) =", img_xR3)
-
-    # Recover A from (xP3, xQ3, xR3)
-    A_from_pk3 = cfpk(xP3, xQ3, xR3, p)
-    print("A from cfpk(P3,Q3,R3) =", A_from_pk3)
 
     print("\n=== done ===")

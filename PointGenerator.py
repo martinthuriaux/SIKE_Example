@@ -293,4 +293,4 @@ def generate_public_basis_points(p):
 
 if __name__ == "__main__":
     # demo for p = 23 (toy SIKE-style prime)
-    generate_public_basis_points(23)
+    generate_public_basis_points(17)
