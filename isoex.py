@@ -223,32 +223,31 @@ if __name__ == "__main__":
     from IsogenyKeygen import compute_public_key_isogeny
 
     # Choose a toy prime and torsion exponents.
-    # p = 431
-    # A = (423 % p, 329 % p)
+    p = 431
+    A = (423 % p, 329 % p)
 
-    p = 23
+    p = 71
     A = (6 % p, 0)  
 
     # torsion bases on the base curve
-    P2, Q2 = find_P2_Q2(p)
+    P2, Q2 = find_P2_Q2(p,A)
     #P2 = ((248,100),(199,304))
     #Q2 = ((394,426),(79,51))
     R2 = point_sub_montgomery(P2, Q2, p, A)
 
-    # P3, Q3 = find_P3_Q3(p)
-    P3 = ((275, 358),(104,410))
-    Q3 = ((185,20),(239,281))
+    P3, Q3 = find_P3_Q3(p,A)
+    #P3 = ((275, 358),(104,410))
+    #Q3 = ((185,20),(239,281))
     R3 = point_sub_montgomery(P3, Q3, p, A)
 
     # toy exponents
-    e2 = 4   # 2^e2 subgroup
-    e3 = 3   # 3^e3 subgroup
+    e2 = 3   # 2^e2 subgroup
+    e3 = 2   # 3^e3 subgroup
 
     # toy secrets
-    sk2 = 11
+    sk2 = 4
     sk3 = 2
 
-    cfpk
     # Build Alice's pk_2 (2-side public key): she pushes Bob's 3-torsion x-basis
     xP3, xQ3, xR3 = P3[0], Q3[0], R3[0]
 

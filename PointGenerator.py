@@ -17,7 +17,7 @@ Dependencies:
 from FindingPointsInE import (
     add_fp2, sub_fp2, mul_fp2, sqr_fp2, eq_fp2, negate_fp2,
     sqrt_fp2_all, is_square_fp, sqrt_fp_all,
-    curve_rhs_fp2,
+    curve_rhs_fp2, inv_fp2
 )
 from EllipticCurveArithmetic import (
     curve_rhs_montgomery,
@@ -63,7 +63,7 @@ def find_sqrt2_fp2(p):
     return roots[0]  # either root is fine; ±sqrt2 both work
 
 
-def point_has_exact_order_power(P, base, exponent, p):
+def point_has_exact_order_power(P, base, exponent, p, A):
     """
     Check if point P has exact order base^exponent.
 
@@ -80,7 +80,7 @@ def point_has_exact_order_power(P, base, exponent, p):
     full_pow = base ** exponent
     prev_pow = base ** (exponent - 1) if exponent > 0 else 1
 
-    Pfull = scalar_mul_montgomery(P, full_pow, p)
+    Pfull = scalar_mul_montgomery(P, full_pow, p, A)
     if Pfull is not None:
         return False  # didn't vanish at expected full order
 
@@ -88,91 +88,58 @@ def point_has_exact_order_power(P, base, exponent, p):
         # order 1 == infinity
         return True
 
-    Pprev = scalar_mul_montgomery(P, prev_pow, p)
+    Pprev = scalar_mul_montgomery(P, prev_pow, p, A)
     return (Pprev is not None)
 
+def two_torsion_x_roots(A, p):
+    """Return the three 2-torsion x-roots: 0 and (-A ± sqrt(A^2-4))/2."""
+    zero = (0, 0)
+    A2   = sqr_fp2(A, p)
+    four = (4 % p, 0)
+    disc = sub_fp2(A2, four, p)                  # A^2 - 4
+    roots_disc = sqrt_fp2_all(disc, p)
+    if not roots_disc:
+        raise RuntimeError("No sqrt(A^2-4) in F_{p^2} (shouldn't happen here).")
+    s = roots_disc[0]                             # either sign is fine; ± handled below
+    negA   = negate_fp2(A, p)
+    two_inv = inv_fp2((2 % p, 0), p)
+    r1 = mul_fp2(add_fp2(negA, s, p), two_inv, p)   # (-A + s)/2
+    r2 = mul_fp2(sub_fp2(negA, s, p), two_inv, p)   # (-A - s)/2
+    return zero, r1, r2
 
 # ----------------------------------------------------------
 # 1. Find P2 and Q2  (2-power torsion basis)
 # ----------------------------------------------------------
 
-def find_P2_Q2(p):
-    """
-    Find P2 and Q2 in the 2^e2 torsion according to §1.3.3.
-
-    From the spec:
-      P2 = [3^{e3}] ( i + c, sqrt(f(i+c)) ),
-         c = smallest nonnegative integer such that:
-              P2 is on curve,
-              and [2^{e2-1}] P2 = (-3 ± 2 sqrt(2), 0).
-
-      Q2 = [3^{e3}] ( i + c, sqrt(f(i+c)) ),
-         c = smallest nonnegative integer such that:
-              Q2 is on curve,
-              and [2^{e2-1}] Q2 = (0, 0).
-
-    We implement this literally.
-    """
-
+def find_P2_Q2(p, A):
     e2, e3 = get_sike_exponents(p)
-    cofactor_3e3 = 3 ** e3          # multiply to wipe 3-part
-    half_two_tors = 2 ** (e2 - 1)   # 2^{e2-1}
+    cof3   = 3 ** e3
+    half2  = 2 ** (e2 - 1)
+
+    x0, x_plus, x_minus = two_torsion_x_roots(A, p)
     zero = (0, 0)
-    i_elem = (0, 1)                 # "i" in F_{p^2}
 
-    # we need (-3 ± 2√2, 0)
-    sqrt2 = find_sqrt2_fp2(p)
-    minus3 = ((-3) % p, 0)
-    twosqrt2 = mul_fp2((2 % p, 0), sqrt2, p)
-    x_target_plus  = add_fp2(minus3, twosqrt2, p)   # -3 + 2√2
-    x_target_minus = sub_fp2(minus3, twosqrt2, p)   # -3 - 2√2
-
-    P2 = None
-    Q2 = None
-
+    P2 = Q2 = None
     for c in range(p):
         if P2 is not None and Q2 is not None:
             break
 
-        # Build the candidate affine x = i + c = (c,1)
-        x = (c % p, 1)
-
-        # Compute f(x) = x^3 + 6x^2 + x
-        rhs = curve_rhs_fp2(x, p)
-
-        # Find all y in F_{p^2} with y^2 = rhs
-        y_candidates = sqrt_fp2_all(rhs, p)
-        for y in y_candidates:
-            # Raw point (before projection)
-            cand = (x, y)
-
-            # Project away 3-part: multiply by 3^{e3}
-            cand_proj = scalar_mul_montgomery(cand, cofactor_3e3, p)
-            if cand_proj is None:
-                # degenerate, skip
+        x   = (c % p, 1)                           # x = i + c
+        rhs = curve_rhs_fp2(x, p, A)         # <-- USE A HERE
+        for y in sqrt_fp2_all(rhs, p):
+            cand = scalar_mul_montgomery((x, y), cof3, p, A)
+            if cand is None:
                 continue
 
-            # Now test where [2^{e2-1}] sends it
-            test_pt = scalar_mul_montgomery(cand_proj, half_two_tors, p)
-
-            if test_pt is None:
-                # shouldn't normally happen for P2/Q2 because RHS is supposed to be 2-torsion, not infinity
+            test = scalar_mul_montgomery(cand, half2, p, A)
+            if test is None:
                 continue
+            xt, yt = test
 
-            (xtest, ytest) = test_pt
-
-            # condition for P2:
-            #   [2^{e2-1}]P2 = (-3 ± 2√2, 0)
-            if P2 is None and eq_fp2(ytest, zero) and (
-                eq_fp2(xtest, x_target_plus) or eq_fp2(xtest, x_target_minus)
-            ):
-                P2 = cand_proj
-                # don't break yet; we still maybe need Q2
-
-            # condition for Q2:
-            #   [2^{e2-1}]Q2 = (0, 0)
-            if Q2 is None and eq_fp2(xtest, zero) and eq_fp2(ytest, zero):
-                Q2 = cand_proj
+            if P2 is None and eq_fp2(yt, zero) and (eq_fp2(xt, x_plus) or eq_fp2(xt, x_minus)):
+                P2 = cand
+            if Q2 is None and eq_fp2(xt, x0) and eq_fp2(yt, zero):
+                Q2 = cand
 
     return P2, Q2
 
@@ -181,7 +148,7 @@ def find_P2_Q2(p):
 # 2. Find P3 and Q3 (3-power torsion basis)
 # ----------------------------------------------------------
 
-def find_P3_Q3(p):
+def find_P3_Q3(p, A):
     """
     Find P3 and Q3 according to §1.3.3:
 
@@ -214,7 +181,7 @@ def find_P3_Q3(p):
 
         x = (c % p, 0)   # x in F_p ⊂ F_{p^2}
 
-        rhs = curve_rhs_fp2(x, p)   # rhs = f(c) in F_{p^2}
+        rhs = curve_rhs_fp2(x, p, A)   # rhs = f(c) in F_{p^2}
         (rhs_re, rhs_im) = rhs
 
         # ---- candidate for P3 (square in F_p) ----
@@ -226,10 +193,10 @@ def find_P3_Q3(p):
                 cand = (x, y)
 
                 # Project away the 2-part: multiply by 2^{e2-1}
-                P3cand = scalar_mul_montgomery(cand, cofactor_2e2m1, p)
+                P3cand = scalar_mul_montgomery(cand, cofactor_2e2m1, p, A)
 
                 # Check exact order 3^{e3}
-                if point_has_exact_order_power(P3cand, 3, e3, p):
+                if point_has_exact_order_power(P3cand, 3, e3, p, A):
                     P3 = P3cand
                     break
 
@@ -253,9 +220,9 @@ def find_P3_Q3(p):
                         continue
 
                     cand = (x, y)
-                    Q3cand = scalar_mul_montgomery(cand, cofactor_2e2m1, p)
+                    Q3cand = scalar_mul_montgomery(cand, cofactor_2e2m1, p, A)
 
-                    if point_has_exact_order_power(Q3cand, 3, e3, p):
+                    if point_has_exact_order_power(Q3cand, 3, e3, p, A):
                         Q3 = Q3cand
                         break
 
@@ -266,7 +233,7 @@ def find_P3_Q3(p):
 # 3. Top-level convenience
 # ----------------------------------------------------------
 
-def generate_public_basis_points(p):
+def generate_public_basis_points(p, A):
     """
     Convenience wrapper.
 
@@ -280,8 +247,8 @@ def generate_public_basis_points(p):
     e2, e3 = get_sike_exponents(p)
     print(f"[+] p+1 = 2^{e2} * 3^{e3}")
 
-    P2, Q2 = find_P2_Q2(p)
-    P3, Q3 = find_P3_Q3(p)
+    P2, Q2 = find_P2_Q2(p, A)
+    P3, Q3 = find_P3_Q3(p, A)
 
     print("P2 =", P2)
     print("Q2 =", Q2)
@@ -292,5 +259,7 @@ def generate_public_basis_points(p):
 
 
 if __name__ == "__main__":
+    p = 431
+    A = (423 % p, 329 % p)   
     # demo for p = 23 (toy SIKE-style prime)
-    generate_public_basis_points(431)
+    generate_public_basis_points(p, A)

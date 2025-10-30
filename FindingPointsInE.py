@@ -118,9 +118,9 @@ def div_fp2(a, b, p):
 # Curve RHS (Montgomery model of SIKE base)
 # -----------------------------------------
 
-def curve_rhs_fp2(x, p):
+def curve_rhs_fp2(x, p, A):
     """
-    Compute f(x) = x^3 + 6x^2 + x in F_{p^2}.
+    Compute f(x) = x^3 + Ax^2 + x in F_{p^2}.
 
     This is the right-hand side of the SIKE base curve
         y^2 = x^3 + 6x^2 + x
@@ -129,10 +129,11 @@ def curve_rhs_fp2(x, p):
     x is an F_{p^2} element given as a pair (x0,x1).
     Returns an F_{p^2} element (f0,f1).
     """
-    six = (6 % p, 0)
+    (re,im) = A
+    coefficient = (re % p, im % p)
     x2 = mul_fp2(x, x, p)      # x^2
     x3 = mul_fp2(x2, x, p)     # x^3
-    term6x2 = mul_fp2(six, x2, p)  # 6*x^2
+    term6x2 = mul_fp2(coefficient, x2, p)  # 6*x^2
     rhs = add_fp2(add_fp2(x3, term6x2, p), x, p)
     return rhs
 
@@ -243,7 +244,7 @@ def is_curve_supersingular(p):
     return (t % p == 0), numFp, t
 
 
-def enumerate_points_over_fp2(p):
+def enumerate_points_over_fp2(p, A):
     """
     Enumerate ALL affine points on E0(F_{p^2}):
 
@@ -271,7 +272,7 @@ def enumerate_points_over_fp2(p):
 
     points = []
     for x in elems:
-        rhs = curve_rhs_fp2(x, p)  # x^3 + 6x^2 + x in F_{p^2}
+        rhs = curve_rhs_fp2(x, p, A)  # x^3 + 6x^2 + x in F_{p^2}
         if rhs in square_table:
             for y in square_table[rhs]:
                 points.append((x, y))
@@ -286,8 +287,8 @@ def enumerate_points_over_fp2(p):
 
 if __name__ == "__main__":
     # Pick a toy SIKE-style prime
-    p = 23  # 23 = 2^3 * 3^1 - 1, good for our toy example
-
+    p = 431  # 23 = 2^3 * 3^1 - 1, good for our toy example
+    A = (423 % p, 329 % p)
     print(f"Using p = {p}")
 
     # Check supersingularity
@@ -297,10 +298,28 @@ if __name__ == "__main__":
     print(f"supersingular? = {ss} (True if p | (p+1-#E(F_p)))")
 
     # Enumerate all curve points over F_{p^2}
-    numFp2, ptsFp2 = enumerate_points_over_fp2(p)
+    numFp2, ptsFp2 = enumerate_points_over_fp2(p, A)
     print(f"#E(F_p^2)      = {numFp2}")
     print(f"(p+1)^2        = {(p+1)**2}  <-- should match #E(F_p^2)")
 
+    if ((248,100),(199,304)) in ptsFp2:
+        print("Found point ((248,100),(199,304)) in E(F_p^2)")
+    else:
+        print("Did NOT find point ((248,100),(199,304)) in E(F_p^2)")
+
+    if ((394,426),(79,51)) in ptsFp2:
+        print("Found point ((394,426),(79,51)) in E(F_p^2)")
+    else:
+        print("Did not find point ((394,426),(79,51)) in E(F_p^2)")
+
+    if ((275, 358),(104, 410)) in ptsFp2:
+        print("Found point ((275, 358),(104,410)) in E(F_p^2)")
+    else:
+        print("Did not find point ((275, 358),(104,410)) in E(F_p^2)")
+
+    if ((185,20),(239,281)) in ptsFp2:
+        print("Found point ((185,20),(239,281)) in E(F_p^2)")
+
     # Uncomment to see them all (576 points for p=23):
-    for P in ptsFp2:
-        print(P)
+    # for P in ptsFp2:
+    #    print(P)
