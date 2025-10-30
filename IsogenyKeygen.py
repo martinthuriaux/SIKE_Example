@@ -12,6 +12,9 @@ from FindingPointsInE import (
 from EllipticCurveArithmetic import (
     point_add_montgomery,
     scalar_mul_montgomery,
+    point_sub_montgomery,
+    xDBL_xonly,
+    xTPL_xonly
 )
 
 from ComputingIsogenies import (
@@ -22,122 +25,107 @@ from ComputingIsogenies import (
 def fp2_const(n, p):
     return (n % p, 0)
 
-
-def point_sub_montgomery(P, Q, p):
+def repeated_xmul_power(xS, A_current, l, k, p):
     """
-    Return P - Q using affine formulas.
+    Return x([l^k] * S) using ONLY xS and A_current, by repeated
+    xDBL_xonly or xTPL_xonly.
+
+    xS is x(S) on the current curve E_A_current.
+    l is 2 or 3.
+    k is a small nonnegative integer.
     """
-    (xQ, yQ) = Q
-    Qneg = (xQ, negate_fp2(yQ, p))
-    return point_add_montgomery(P, Qneg, p)
+    xQ = xS
+    for _ in range(k):
+        if l == 2:
+            xQ = xDBL_xonly(xQ, A_current, p)
+        elif l == 3:
+            xQ = xTPL_xonly(xQ, A_current, p)
+        else:
+            raise ValueError("l must be 2 or 3")
+    return xQ
 
 
-def build_kernel_generator_from_secret(p, sk_ell, P_ell, Q_ell):
+"""
+NEED TO CHECK HERE IF THERE IS A WAY OF DOING POINT ADDITION WITH X-ONLY COORDINATE
+"""
+
+def build_kernel_generator_from_secret(p, sk_l, P_l, Q_l, A):
     """
-    S = P_ell + [sk_ell] Q_ell.
+    S = P_l + [sk_l] Q_l.
     This is a full point (x,y), not just x, because internally the
     next kernel isogeny step needs a full point on the current curve.
     """
-    kQ = scalar_mul_montgomery(Q_ell, sk_ell, p)
-    S_point = point_add_montgomery(P_ell, kQ, p)
+    kQ = scalar_mul_montgomery(Q_l, sk_l, p, A)
+    S_point = point_add_montgomery(P_l, kQ, p, A)
     return S_point
 
 
 def compute_public_key_isogeny(
     p,
-    ell,         # small prime: 2 or 3
-    e_ell,       # exponent e_ell s.t. subgroup has order ell^e_ell
-    sk_ell,      # secret scalar
-    A_start,     # starting A for E0: y^2 = x^3 + A_start*x^2 + x
-    # basis for *our* ℓ^e_ell torsion, USED FOR KERNEL (full points)
-    P_ell,
-    Q_ell,
-    # x-coordinates of the *other side's* torsion basis
-    # (xP_other, xQ_other, xR_other) that we must transform
-    xP_other,
-    xQ_other,
-    xR_other,
+    l,         
+    e_l,       
+    sk_l,      
+    A_start,     
+    P_l,
+    Q_l,
+    xP_m,
+    xQ_m,
+    xR_m,
 ):
     """
-    This is the SIKE keygen isogeny walk ("Compute a public key pk_ℓ").
-
-    We:
-      1. Form the kernel generator S = P_ell + sk_ell*Q_ell  (a full point).
-      2. Repeat e_ell times:
-         - Build the ℓ-isogeny φ_i from <S>.
-         - Update (x1,x2,x3) <- φ_i(x1,x2,x3)   [x-only map]
-         - Update S <- φ_i(S)                  [full point so next step works]
-         - Update A_current <- A_next          [new curve coefficient]
-      3. Return (x1, x2, x3) as the public key.
-
-    Output:
-        (x1, x2, x3)  -- these are F_{p^2} x-coordinates after the walk.
+    SIKE keygen isogeny walk ("Compute a public key pk_ℓ").
+    Corrected version: uses [ℓ^(e_l-i-1)]S for kernel, updates xS via φ_x.
     """
 
-    # (1) Build kernel generator S for the first step
-    S_point = build_kernel_generator_from_secret(p, sk_ell, P_ell, Q_ell)
-    if S_point is None:
-        raise RuntimeError(
-        f"degenerate kernel for ell={ell}: P + {sk_ell}*Q = O. "
-        "Pick a different sk_ell."
-    )
+    # --- (1) Build master secret point S_master = P + sk*Q ---
+    S_master = build_kernel_generator_from_secret(p, sk_l, P_l, Q_l, A_start)
+    if S_master is None:
+        raise RuntimeError("degenerate kernel: P + sk*Q = O")
 
-    # Initialize the transported x-basis (the "other party"'s basis)
-    x1 = xP_other
-    x2 = xQ_other
-    x3 = xR_other
+    xS = S_master[0]  # only keep x, per spec
 
-    # Keep track of current curve coefficient
-    # Curve model: y^2 = x^3 + A_current*x^2 + x  (B = 1)
+    print("xS: ", xS)
     A_current = A_start
 
-    # Walk e_ell times
-    for i in range(e_ell):
+    # other side's basis x-coords
+    x1, x2, x3 = xP_m, xQ_m, xR_m
 
-        # ------------------------------------------------
-        # (a) Build the ℓ-isogeny from the current kernel S_point
-        #     We will get:
-        #         A_next : new curve coefficient
-        #         phi_x  : x-only map x -> x'
-        #
-        #     NOTE: we're using the x-only isogenies you wrote:
-        #       compute_2_isogeny_xonly(A_current, S_point, p)
-        #       compute_3_isogeny_xonly(A_current, S_point, p)
-        # ------------------------------------------------
-        if ell == 2:
-            A_next, phi_x = compute_2_isogeny_xonly(A_current, S_point, p)
-        elif ell == 3:
-            A_next, phi_x = compute_3_isogeny_xonly(A_current, S_point, p)
+    # i from 0 .. e_l-1
+    for i in range(e_l):
+        # how much torsion to strip this round
+        k = e_l - i - 1
+
+        # kernel x = x( [l^k] * S_i )
+        xKer = repeated_xmul_power(xS, A_current, l, k, p)
+
+        # build isogeny from xKer
+        if l == 2:
+            A_next, phi_x = compute_2_isogeny_xonly(A_current, xKer, p)
         else:
-            raise ValueError(f"Unsupported ell={ell} (only 2 or 3 supported here)")
+            A_next, phi_x = compute_3_isogeny_xonly(A_current, xKer, p)
 
-        # ------------------------------------------------
-        # (b) Push the other side's basis x-coordinates through this step.
-        #     Each xi is an x in F_{p^2}. phi_x returns the new x (or None if
-        #     that x belonged to the kernel -- that should not happen for the
-        #     other side's basis in a valid SIKE keygen).
-        # ------------------------------------------------
+        # push other side's basis
         x1_new = phi_x(x1)
         x2_new = phi_x(x2)
         x3_new = phi_x(x3)
+        if None in (x1_new, x2_new, x3_new):
+            raise RuntimeError("basis point killed (shouldn't happen)")
 
-        # Sanity: none of these should die unless something degenerate
-        if x1_new is None or x2_new is None or x3_new is None:
-            # In real code you'd handle/restart, but here we just raise
-            raise RuntimeError(
-                f"x-only map killed a basis point at step {i}; "
-                "this shouldn't happen in valid SIKE parameters."
-            )
+        # move secret forward to next curve
+        xS_new = phi_x(xS)
+        if xS_new is None:
+            if i != e_l - 1:
+                raise RuntimeError("secret died early")
+            # last round is allowed to die
+        else:
+            xS = xS_new
 
+        #error checking: print("xS: ", xS)
+
+        # advance curve and transported basis
         A_current = A_next
-
-        S_point = scalar_mul_montgomery(S_point, ell, p)
-
         x1, x2, x3 = x1_new, x2_new, x3_new
 
-    # end for
-
-    # After e_ell steps, x1,x2,x3 are your public key coordinates
     return (x1, x2, x3)
 
 
@@ -153,24 +141,26 @@ if __name__ == "__main__":
     #   - and outputs a 3-tuple of x-coordinates as her "public key".
     #
 
-    p = 23
+    p = 431
 
     # starting curve: y^2 = x^3 + 6x^2 + x
-    A_start = (6 % p, 0)
+    A_start = (423 % p, 329 % p)  
 
     # Toy exponents: in real SIKEp434, e2 is ~110. Here let's say small.
-    e2 = 3
-    e3 = 1  
+    e2 = 4
+    e3 = 3  
 
     # Alice's secret scalar on the 2-side
-    sk2 = 7
+    sk2 = 11
 
     # Bob's secret scalar on the 3-side
-    sk3 = 7
+    sk3 = 2
 
     # Our 2^e2 torsion basis (full points with (x,y))
-    P2, Q2 = find_P2_Q2(p)
-    R2 = point_sub_montgomery(P2, Q2, p)  # R2 = P2 - Q2
+    #P2, Q2 = find_P2_Q2(p)
+    P2 = ((248,100),(199,304))
+    Q2 = ((394,426),(79,51))
+    R2 = point_sub_montgomery(P2, Q2, p, A_start)  # R2 = P2 - Q2
 
     xP2 = P2[0]
     xQ2 = Q2[0]
@@ -178,42 +168,44 @@ if __name__ == "__main__":
     
 
     # Bob's 3^e3 torsion basis (full points)
-    P3, Q3 = find_P3_Q3(p)
-    R3 = point_sub_montgomery(P3, Q3, p)  # R3 = P3 - Q3
+    #P3, Q3 = find_P3_Q3(p)
+    P3 = ((275, 358),(104,410))
+    Q3 = ((185,20),(239,281))
+    R3 = point_sub_montgomery(P3, Q3, p, A_start)  # R3 = P3 - Q3
 
     # Extract just x-coordinates of Bob's basis
     xP3 = P3[0]
     xQ3 = Q3[0]
     xR3 = R3[0]
 
-    print("[+] Running toy SIKE-style isogeny walk (Alice-side)...")
-
     pk2 = compute_public_key_isogeny(
         p=p,
-        ell=2,            # Alice uses 2-isogeny steps
-        e_ell=e2,         # walk length (toy)
-        sk_ell=sk2,       # Alice's secret
+        l=2,            # Alice uses 2-isogeny steps
+        e_l=e2,         # walk length (toy)
+        sk_l=sk2,       # Alice's secret
         A_start=A_start,  # starting curve coeff A
-        P_ell=P2,         # Alice's 2-torsion generator P2
-        Q_ell=Q2,         # Alice's 2-torsion generator Q2
-        xP_other=xP3,     # Bob's basis x(P3)
-        xQ_other=xQ3,     # Bob's basis x(Q3)
-        xR_other=xR3,     # Bob's basis x(P3-Q3)
+        P_l=P2,         # Alice's 2-torsion generator P2
+        Q_l=Q2,         # Alice's 2-torsion generator Q2
+        xP_m=xP3,     # Bob's basis x(P3)
+        xQ_m=xQ3,     # Bob's basis x(Q3)
+        xR_m=xR3,     # Bob's basis x(P3-Q3)
     )
 
     print(f"[+] Public key pk_2 = {pk2}")
 
     pk3 = compute_public_key_isogeny(
         p=p,
-        ell=3,            # Alice uses 2-isogeny steps
-        e_ell=e3,         # walk length (toy)
-        sk_ell=sk3,       # Alice's secret
+        l=3,            # Alice uses 2-isogeny steps
+        e_l=e3,         # walk length (toy)
+        sk_l=sk3,       # Alice's secret
         A_start=A_start,  # starting curve coeff A
-        P_ell=P3,         # Alice's 2-torsion generator P2
-        Q_ell=Q3,         # Alice's 2-torsion generator Q2
-        xP_other=xP2,     # Bob's basis x(P3)
-        xQ_other=xQ2,     # Bob's basis x(Q3)
-        xR_other=xR2,     # Bob's basis x(P3-Q3)
+        P_l=P3,         # Alice's 2-torsion generator P2
+        Q_l=Q3,         # Alice's 2-torsion generator Q2
+        xP_m=xP2,     # Bob's basis x(P3)
+        xQ_m=xQ2,     # Bob's basis x(Q3)
+        xR_m=xR2,     # Bob's basis x(P3-Q3)
     )
 
     print(f"[+] Public key pk_3 = {pk3}")
+
+

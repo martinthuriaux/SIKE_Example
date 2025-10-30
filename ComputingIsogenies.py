@@ -51,7 +51,7 @@ def mul_many_fp2(vals, p):
 #
 # These depend only on x2 (kernel x) and xP (input x). No y is needed.
 #
-def compute_2_isogeny_xonly(A, K, p):
+def compute_2_isogeny_xonly(A, x2, p):
     """
     Input:
         A : F_{p^2}  (current curve coefficient in y^2 = x^3 + A x^2 + x)
@@ -64,8 +64,7 @@ def compute_2_isogeny_xonly(A, K, p):
             phi2_x is a function x_out = phi2_x(x_in),
                    or None if x_in hits the kernel (denominator 0).
     """
-    (x2, _y2) = K
-
+    
     one = fp2_const(1, p)
     two = fp2_const(2, p)
 
@@ -103,7 +102,7 @@ def compute_2_isogeny_xonly(A, K, p):
 #
 # Again: depends only on x3 (kernel x) and xP (input x). No y.
 #
-def compute_3_isogeny_xonly(A, K, p):
+def compute_3_isogeny_xonly(A, x3, p):
     """
     Input:
         A : F_{p^2}  (current curve coefficient)
@@ -116,7 +115,6 @@ def compute_3_isogeny_xonly(A, K, p):
             phi3_x is a function x_out = phi3_x(x_in),
                     or None if x_in == x3.
     """
-    (x3, _y3) = K
 
     one = fp2_const(1, p)
     six = fp2_const(6, p)
@@ -238,7 +236,7 @@ if __name__ == "__main__":
     print("R2 =", R2)
 
     # Build 2-isogeny from P2
-    A_after2, phi2_x = compute_2_isogeny_xonly(A0, P2, p)
+    A_after2, phi2_x = compute_2_isogeny_xonly(A0, xP2, p)
     print("\n[2-isogeny from P2]")
     print("A' =", A_after2)
 
@@ -246,7 +244,7 @@ if __name__ == "__main__":
     img_xP2 = phi2_x(xP2)
     img_xQ2 = phi2_x(xQ2)
     img_xR2 = phi2_x(xR2)
-    print("phi2_x(xP2) =", img_xP2)
+
     print("phi2_x(xQ2) =", img_xQ2)
     print("phi2_x(xR2) =", img_xR2)
 
@@ -266,7 +264,7 @@ if __name__ == "__main__":
     print("R3 =", R3)
 
     # Build 3-isogeny from P3
-    A_after3, phi3_x = compute_3_isogeny_xonly(A0, P3, p)
+    A_after3, phi3_x = compute_3_isogeny_xonly(A0, xP3, p)
     print("\n[3-isogeny from P3]")
     print("A' =", A_after3)
 
