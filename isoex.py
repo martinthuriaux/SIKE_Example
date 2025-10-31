@@ -3,6 +3,7 @@
 # Implements SIKE §1.3.7 "Establishing shared keys: isoex_ell"
 # For now we just return the final A coefficient of the shared curve
 # (which determines j), instead of hashing j into bytes.
+from secrets import randbelow
 
 from FindingPointsInE import (
     add_fp2,
@@ -16,6 +17,7 @@ from FindingPointsInE import (
 from EllipticCurveArithmetic import (
     scalar_mul_montgomery,
     point_add_montgomery,
+    point_sub_montgomery,
     xDBL_xonly,
     xTPL_xonly,
 )
@@ -160,22 +162,17 @@ def isoex_l(
     (xP_m, xQ_m, xR_m) = pk_m
     A_current = cfpk(xP_m, xQ_m, xR_m, p)
 
-    print("A from pk_m:", A_current)
-
     # 2. Build S_master on the *same base curve E0*. In SIKE the base curve
     #    is shared, so P_l/Q_l are on that same E0. Then set xS = x(S_master).
     # (We DON'T use xR_m here to make S_master; R is only used in cfpk.)
 
     P_other, Q_other = lift_basis_from_pk(xP_m, xQ_m, xR_m, A_current, p) 
-    print("P_other:", P_other)
-    print("Q_other:", Q_other)
     kQ = scalar_mul_montgomery(Q_other, sk_l, p, A_current)
     S_master = point_add_montgomery(P_other, kQ, p, A_current)
 
     if S_master is None:
         raise RuntimeError("isoex_l: degenerate secret (P + sk*Q = O)")
     xS = S_master[0]
-    print("xS (initial):", xS)
 
     # 3. Walk the isogeny e_l times.
     for i in range(e_l):
@@ -183,8 +180,6 @@ def isoex_l(
 
         # kernel x-coordinate for this step:
         xKer = repeated_xmul_power(xS, A_current, l, k, p)
-
-        print("Round", i, "xKer:", xKer)
 
         # build the isogeny from xKer:
         if l == 2:
@@ -196,8 +191,6 @@ def isoex_l(
 
         # advance curve
         A_current = A_next
-
-        print("Round", i, "A_current:", A_current)
 
         # move our secret forward along φ_i
         xS_new = phi_x(xS)
@@ -220,24 +213,16 @@ def isoex_l(
 if __name__ == "__main__":
     from PointGenerator import find_P2_Q2, find_P3_Q3
     from EllipticCurveArithmetic import point_sub_montgomery
-    from IsogenyKeygen import compute_public_key_isogeny
-
-    # Choose a toy prime and torsion exponents.
-    p = 431
-    A = (423 % p, 329 % p)
+    from isogen import compute_public_key_isogeny
 
     p = 71
     A = (6 % p, 0)  
 
     # torsion bases on the base curve
     P2, Q2 = find_P2_Q2(p,A)
-    #P2 = ((248,100),(199,304))
-    #Q2 = ((394,426),(79,51))
     R2 = point_sub_montgomery(P2, Q2, p, A)
 
     P3, Q3 = find_P3_Q3(p,A)
-    #P3 = ((275, 358),(104,410))
-    #Q3 = ((185,20),(239,281))
     R3 = point_sub_montgomery(P3, Q3, p, A)
 
     # toy exponents
@@ -245,8 +230,10 @@ if __name__ == "__main__":
     e3 = 2   # 3^e3 subgroup
 
     # toy secrets
-    sk2 = 4
-    sk3 = 2
+    sk2 = randbelow(pow(2, e2))
+    print("sk2:", sk2)
+    sk3 = randbelow(pow(3, e3))
+    print("sk3:", sk3)
 
     # Build Alice's pk_2 (2-side public key): she pushes Bob's 3-torsion x-basis
     xP3, xQ3, xR3 = P3[0], Q3[0], R3[0]

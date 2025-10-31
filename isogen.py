@@ -84,7 +84,6 @@ def compute_public_key_isogeny(
 
     xS = S_master[0]  # only keep x, per spec
 
-    print("xS: ", xS)
     A_current = A_start
 
     # other side's basis x-coords
