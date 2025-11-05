@@ -287,8 +287,8 @@ def enumerate_points_over_fp2(p, A):
 
 if __name__ == "__main__":
     # Pick a toy SIKE-style prime
-    p = 431  # 23 = 2^3 * 3^1 - 1, good for our toy example
-    A = (423 % p, 329 % p)
+    p = 11  # 23 = 2^3 * 3^1 - 1, good for our toy example
+    A = (6 % p, 0 % p)
     print(f"Using p = {p}")
 
     # Check supersingularity
@@ -302,23 +302,7 @@ if __name__ == "__main__":
     print(f"#E(F_p^2)      = {numFp2}")
     print(f"(p+1)^2        = {(p+1)**2}  <-- should match #E(F_p^2)")
 
-    if ((248,100),(199,304)) in ptsFp2:
-        print("Found point ((248,100),(199,304)) in E(F_p^2)")
-    else:
-        print("Did NOT find point ((248,100),(199,304)) in E(F_p^2)")
-
-    if ((394,426),(79,51)) in ptsFp2:
-        print("Found point ((394,426),(79,51)) in E(F_p^2)")
-    else:
-        print("Did not find point ((394,426),(79,51)) in E(F_p^2)")
-
-    if ((275, 358),(104, 410)) in ptsFp2:
-        print("Found point ((275, 358),(104,410)) in E(F_p^2)")
-    else:
-        print("Did not find point ((275, 358),(104,410)) in E(F_p^2)")
-
-    if ((185,20),(239,281)) in ptsFp2:
-        print("Found point ((185,20),(239,281)) in E(F_p^2)")
+    print("6*8 ", mul_fp2((6,0),(8,0),11))
 
     # Uncomment to see them all (576 points for p=23):
     # for P in ptsFp2:

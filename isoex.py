@@ -81,20 +81,6 @@ def repeated_xmul_power(xS, A_current, e_l, k, p):
             raise ValueError("e_l must be 2 or 3")
     return xQ
 
-def lift_x_to_point_on_curve(xP, A, p):
-    """
-    Given xP in F_{p^2}, find some affine point (xP, yP) on
-    y^2 = x^3 + A x^2 + x. We only need ANY valid square root.
-
-    Returns (xP, yP) or raises if no sqrt exists (shouldn't happen
-    for torsion points in SIKE).
-    """
-    rhs = montgomery_rhs(xP, A, p)      # y^2
-    roots = sqrt_fp2_all(rhs, p)        # list of possible y
-    if not roots:
-        raise RuntimeError("lift_x_to_point_on_curve: no sqrt for rhs; invalid public key?")
-    yP = roots[0]                       # pick either root; sign doesn't matter
-    return (xP, yP)
 
 def lift_basis_from_pk(xP, xQ, xR, A, p):
     """
@@ -134,29 +120,6 @@ def isoex_l(
     sk_l,     # our secret scalar in that torsion
     pk_m,   # other side's public key tuple: (xP_m, xQ_m, xR_m)
 ):
-    """
-    Run SIKE isoex_ll (key agreement) for one side.
-
-    Steps (per §1.3.7):
-      1. Rebuild starting curve coefficient A_current from pk_m via cfpk.
-      2. Form S_master = P_l + [sk_l]Q_l; let xS = x(S_master).
-      3. For i in 0..e_l-1:
-         a. k = e_l - i - 1
-            xKer = x([l^k]*S_i) on E_i   (using repeated_xmul_power)
-            Build isogeny φ_i : E_i -> E_{i+1} with kernel <[l^k]S_i>.
-            This gives us A_next and an x-only map phi_x().
-         b. Update curve A_current <- A_next.
-         c. Update xS <- phi_x(xS).
-            (If phi_x(xS) = None before the *very last* step, it's an error.
-             On the last step it's allowed to die, because the kernel point
-             itself maps to infinity.)
-      4. Return final A_current. In SIKE you'd hash j(A_current); for now we
-         just hand A_current back.
-
-    Output:
-      A_current (F_{p^2}), the final curve coefficient after our secret walk.
-      This defines j-invariant and is our "shared secret" surrogate.
-    """
 
     # 1. Recover starting curve A from their public key.
     (xP_m, xQ_m, xR_m) = pk_m

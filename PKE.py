@@ -1,15 +1,6 @@
 # sike_pke.py
 #
 # A direct implementation of Algorithm 1 (PKE = Gen, Enc, Dec)
-# using your isoex_l() routine as the "key agreement" step.
-#
-# c0 is a 2-side public key (pk2) produced from the randomness sk2.
-# c1 is m XOR F(j), where j is derived from isoex_2(pk3, sk2).
-#
-# Notes:
-# - Message m is bytes. We hash j with SHAKE256 to the exact m-length.
-# - Keys/ciphertexts are kept as tuples of F_{p^2} x-coordinates,
-#   exactly like your other code (no serialization here).
 
 from dataclasses import dataclass
 from secrets import randbelow
@@ -38,7 +29,7 @@ def shake256_bytes(msg: bytes, outlen: int) -> bytes:
     import hashlib
     return hashlib.shake_256(msg).digest(outlen)
 
-#This functional will hash a j-invariant to bytes
+#This functional will hash a j-invariant to bytes. In this case, its the function F from the spec.
 def hash_j_to_bytes(j, p: int, outlen: int) -> bytes:
     """
     j is an element of F_{p^2} represented as a pair of ints (a,b).
@@ -64,6 +55,7 @@ class SIKEParams:
         P3, Q3 = find_P3_Q3(self.p, self.A0)
         R2 = point_sub_montgomery(P2, Q2, self.p, self.A0)
         R3 = point_sub_montgomery(P3, Q3, self.p, self.A0)
+        print("P2:", P2, "Q2:", Q2, "R2:", R2, "P3:", P3, "Q3:", Q3, "R3:", R3)
         return (P2, Q2, R2), (P3, Q3, R3)
 
 
@@ -80,6 +72,9 @@ def Gen(params: SIKEParams):
 
     # 1) sk_3 <–– Random in K_3 = [0, 3^e3)
     sk3 = randbelow(pow(3, params.e3))
+    print("Value of sk3 in Gen:", sk3)
+
+    # print("For gen: Value of x_(p_m) :", xP2, "Value of x_(q_m):", xQ2, "Value of x_(r_m):", xR2)
 
     # 2) pk3 <–– isogen_3(sk_3)
     pk3 = compute_public_key_isogeny(
@@ -134,9 +129,10 @@ def Enc(params: SIKEParams, pk3, m: bytes, r: Optional[int] = None):
     # 7) H <–– F(j)
     h = hash_j_to_bytes(j, params.p, len(m))
 
-    # c1 <–– h XOR m 
+    # 8) c1 <–– h XOR m 
     c1 = xor_bytes(h, m)
 
+    # 9) return (c0, c1)
     return c0, c1
 
 
@@ -149,6 +145,8 @@ def Dec(params: SIKEParams, sk3, ciphertext) -> bytes:
 
     # shared secret via isoex_3 with Alice's c0 (= pk2)
     print("p in Dec:", params.p)
+
+    # 10) J <–– isoex_3(c0, sk_3)
     A_shared = isoex_l(
         p      = params.p,
         l      = 3,
@@ -156,21 +154,25 @@ def Dec(params: SIKEParams, sk3, ciphertext) -> bytes:
         sk_l   = sk3,
         pk_m   = c0,
     )
-
     j = j_invariant_from_A(A_shared, params.p)
+
+    # 11) H <–– F(j)
     h = hash_j_to_bytes(j, params.p, len(c1))
 
+    # 12) m <–– h XOR c1
     m = xor_bytes(h, c1)
+
+    # 13) return m
     return m
 
 
-# ---------- quick sanity demo (matches your isoex demo) ----------
+# ---------- quick sanity demo ----------
 
 if __name__ == "__main__":
-    # tiny toy params from your demo:
-    p = 23
+    
+    p = 71
     A0 = (6 % p, 0)
-    e2, e3 = 3, 1
+    e2, e3 = 3, 2
     params = SIKEParams(p=p, A0=A0, e2=e2, e3=e3)
 
     # Bob generates (pk3, sk3)

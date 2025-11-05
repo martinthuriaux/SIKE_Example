@@ -44,11 +44,6 @@ def repeated_xmul_power(xS, A_current, l, k, p):
             raise ValueError("l must be 2 or 3")
     return xQ
 
-
-"""
-NEED TO CHECK HERE IF THERE IS A WAY OF DOING POINT ADDITION WITH X-ONLY COORDINATE
-"""
-
 def build_kernel_generator_from_secret(p, sk_l, P_l, Q_l, A):
     """
     S = P_l + [sk_l] Q_l.
@@ -56,7 +51,10 @@ def build_kernel_generator_from_secret(p, sk_l, P_l, Q_l, A):
     next kernel isogeny step needs a full point on the current curve.
     """
     kQ = scalar_mul_montgomery(Q_l, sk_l, p, A)
+    print(f"Value of {sk_l} * {Q_l}):", kQ)
+
     S_point = point_add_montgomery(P_l, kQ, p, A)
+    print(f"Value of {P_l} + {kQ}):", S_point)
     return S_point
 
 
@@ -83,6 +81,7 @@ def compute_public_key_isogeny(
         raise RuntimeError("degenerate kernel: P + sk*Q = O")
 
     xS = S_master[0]  # only keep x, per spec
+    print("Initial xS:", xS)
 
     A_current = A_start
 
@@ -96,6 +95,7 @@ def compute_public_key_isogeny(
 
         # kernel x = x( [l^k] * S_i )
         xKer = repeated_xmul_power(xS, A_current, l, k, p)
+        print(f"Round {i}: xKer = {xKer}")
 
         # build isogeny from xKer
         if l == 2:
@@ -107,11 +107,16 @@ def compute_public_key_isogeny(
         x1_new = phi_x(x1)
         x2_new = phi_x(x2)
         x3_new = phi_x(x3)
+
+        print(f"Value of A at round {i}", A_next)
+        print(f"In round {i}, f(x_1):", x1_new, "f(x_2):", x2_new, "f(x_3):", x3_new)
+
         if None in (x1_new, x2_new, x3_new):
             raise RuntimeError("basis point killed (shouldn't happen)")
 
         # move secret forward to next curve
         xS_new = phi_x(xS)
+        print(f"In round {i}, f(xS):", xS_new)
         if xS_new is None:
             if i != e_l - 1:
                 raise RuntimeError("secret died early")
@@ -156,9 +161,7 @@ if __name__ == "__main__":
     sk3 = 2
 
     # Our 2^e2 torsion basis (full points with (x,y))
-    #P2, Q2 = find_P2_Q2(p)
-    P2 = ((248,100),(199,304))
-    Q2 = ((394,426),(79,51))
+    P2, Q2 = find_P2_Q2(p, A_start)
     R2 = point_sub_montgomery(P2, Q2, p, A_start)  # R2 = P2 - Q2
 
     xP2 = P2[0]
@@ -167,9 +170,7 @@ if __name__ == "__main__":
     
 
     # Bob's 3^e3 torsion basis (full points)
-    #P3, Q3 = find_P3_Q3(p)
-    P3 = ((275, 358),(104,410))
-    Q3 = ((185,20),(239,281))
+    P3, Q3 = find_P3_Q3(p, A_start)
     R3 = point_sub_montgomery(P3, Q3, p, A_start)  # R3 = P3 - Q3
 
     # Extract just x-coordinates of Bob's basis
